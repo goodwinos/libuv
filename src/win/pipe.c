@@ -968,33 +968,13 @@ static DWORD WINAPI uv_pipe_zero_readfile_thread_proc(void* parameter) {
     }
     uv_mutex_unlock(m);
   }
-restart_readfile:
-  if (handle->flags & UV_HANDLE_READING) {
-    result = ReadFile(handle->handle,
-                      &uv_zero_,
-                      0,
-                      &bytes,
-                      NULL);
-    if (!result) {
-      err = GetLastError();
-      if (err == ERROR_OPERATION_ABORTED &&
-          handle->flags & UV_HANDLE_PIPE_READ_CANCELABLE) {
-        if (handle->flags & UV_HANDLE_READING) {
-          /* just a brief break to do something else */
-          handle->pipe.conn.readfile_thread = NULL;
-          /* resume after it is finished */
-          uv_mutex_lock(m);
-          handle->pipe.conn.readfile_thread = hThread;
-          uv_mutex_unlock(m);
-          goto restart_readfile;
-        } else {
-          result = 1; /* successfully stopped reading */
-        }
-      }
-    }
+
+  if (ReadFile(handle->handle, &uv_zero_, 0, &bytes, NULL)) {
+    SET_REQ_SUCCESS(req);
   } else {
-    result = 1; /* successfully aborted read before it even started */
+    SET_REQ_ERROR(req, GetLastError());
   }
+
   if (hThread) {
     assert(hThread == handle->pipe.conn.readfile_thread);
     /* mutex does not control clearing readfile_thread */
@@ -1004,10 +984,6 @@ restart_readfile:
        open or close the handle */
     CloseHandle(hThread);
     uv_mutex_unlock(m);
-  }
-
-  if (!result) {
-    SET_REQ_ERROR(req, err);
   }
 
   POST_COMPLETION_FOR_REQ(loop, req);
@@ -1737,7 +1713,8 @@ void uv_process_pipe_read_req(uv_loop_t* loop,
 
   if (!REQ_SUCCESS(req)) {
     /* An error occurred doing the 0-read. */
-    if (handle->flags & UV_HANDLE_READING) {
+    if (handle->flags & UV_HANDLE_READING &&
+        GET_REQ_ERROR(req) != ERROR_OPERATION_ABORTED) {
       uv_pipe_read_error_or_eof(loop,
                                 handle,
                                 GET_REQ_ERROR(req),

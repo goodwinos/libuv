@@ -1,4 +1,4 @@
-/* Copyright Joyent, Inc. and other Node contributors. All rights reserved.
+/* Copyright libuv project contributors. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -41,6 +41,8 @@ struct write_info {
   char buffers[BUFFER_SIZE][BUFFERS_PER_WRITE];
 };
 
+static uv_shutdown_t shutdown_req;
+
 static size_t bytes_written;
 static size_t bytes_read;
 
@@ -50,6 +52,11 @@ static void write_cb(uv_write_t* req, int status) {
   ASSERT(status == 0);
   bytes_written += BUFFERS_PER_WRITE * BUFFER_SIZE;
   free(write_info);
+}
+
+static void shutdown_cb(uv_shutdown_t* req, int status) {
+  ASSERT(status == 0);
+  uv_close((uv_handle_t*) req->handle, NULL);
 }
 
 static void do_write(uv_stream_t* handle) {
@@ -78,9 +85,22 @@ static void alloc_cb(uv_handle_t* handle,
   buf->len = (int) suggested_size;
 }
 
+#ifndef _WIN32
+#include <sys/types.h>
+#include <unistd.h>
+#endif
+
 static void read_cb(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf) {
   ssize_t i;
   int r;
+
+#ifdef _WIN32
+  DWORD pid = GetCurrentProcessId();
+#else
+  pid_t pid = getpid();
+#endif
+
+  printf("(%d) read_cb %d\n", (int)pid, (int)nread);
 
   ASSERT(nread >= 0);
   bytes_read += nread;
@@ -92,6 +112,8 @@ static void read_cb(uv_stream_t* handle, ssize_t nread, const uv_buf_t* buf) {
 
   if (bytes_read >= XFER_SIZE) {
     r = uv_read_stop(handle);
+    ASSERT(r == 0);
+    r = uv_shutdown(&shutdown_req, handle, shutdown_cb);
     ASSERT(r == 0);
   }
 }
@@ -118,7 +140,6 @@ static void do_writes_and_reads(uv_stream_t* handle) {
 }
 
 TEST_IMPL(ipc_heavy_traffic_deadlock_bug) {
-  uv_loop_t* loop = uv_default_loop();
   uv_pipe_t pipe;
   uv_process_t process;
 
@@ -139,12 +160,6 @@ int ipc_helper_heavy_traffic_deadlock_bug(void) {
   ASSERT(r == 0);
 
   do_writes_and_reads((uv_stream_t*) &pipe);
-
-  /* Since on Windows pipes may report EOF before the pipe has been fully
-   * drained (when the remote side of the connection is closed), sleep
-   * for a short duration, to give the parent process enough time to read
-   * all the data from the pipe. */
-  uv_sleep(100);
 
   MAKE_VALGRIND_HAPPY();
   return 0;

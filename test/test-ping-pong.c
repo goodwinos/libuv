@@ -22,7 +22,6 @@
 #include "uv.h"
 #include "task.h"
 
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -42,7 +41,7 @@ static int pinger_on_connect_count;
 
 
 typedef struct {
-  bool vectored_writes;
+  int vectored_writes;
   int pongs;
   int state;
   union {
@@ -167,7 +166,7 @@ static void pinger_on_connect(uv_connect_t *req, int status) {
 
 
 /* same ping-pong test, but using IPv6 connection */
-static void tcp_pinger_v6_new(bool vectored_writes) {
+static void tcp_pinger_v6_new(int vectored_writes) {
   int r;
   struct sockaddr_in6 server_addr;
   pinger_t *pinger;
@@ -198,7 +197,7 @@ static void tcp_pinger_v6_new(bool vectored_writes) {
 }
 
 
-static void tcp_pinger_new(bool vectored_writes) {
+static void tcp_pinger_new(int vectored_writes) {
   int r;
   struct sockaddr_in server_addr;
   pinger_t *pinger;
@@ -228,7 +227,7 @@ static void tcp_pinger_new(bool vectored_writes) {
 }
 
 
-static void pipe_pinger_new(bool vectored_writes) {
+static void pipe_pinger_new(int vectored_writes) {
   int r;
   pinger_t *pinger;
 
@@ -264,13 +263,13 @@ static int run_ping_pong_test(void) {
 
 
 TEST_IMPL(tcp_ping_pong) {
-  tcp_pinger_new(false);
+  tcp_pinger_new(0);
   return run_ping_pong_test();
 }
 
 
 TEST_IMPL(tcp_ping_pong_vec) {
-  tcp_pinger_new(true);
+  tcp_pinger_new(1);
   return run_ping_pong_test();
 }
 
@@ -278,7 +277,7 @@ TEST_IMPL(tcp_ping_pong_vec) {
 TEST_IMPL(tcp6_ping_pong) {
   if (!can_ipv6())
     RETURN_SKIP("IPv6 not supported");
-  tcp_pinger_v6_new(false);
+  tcp_pinger_v6_new(0);
   return run_ping_pong_test();
 }
 
@@ -286,18 +285,18 @@ TEST_IMPL(tcp6_ping_pong) {
 TEST_IMPL(tcp6_ping_pong_vec) {
   if (!can_ipv6())
     RETURN_SKIP("IPv6 not supported");
-  tcp_pinger_v6_new(true);
+  tcp_pinger_v6_new(1);
   return run_ping_pong_test();
 }
 
 
 TEST_IMPL(pipe_ping_pong) {
-  pipe_pinger_new(false);
+  pipe_pinger_new(0);
   return run_ping_pong_test();
 }
 
 
 TEST_IMPL(pipe_ping_pong_vec) {
-  pipe_pinger_new(true);
+  pipe_pinger_new(1);
   return run_ping_pong_test();
 }
